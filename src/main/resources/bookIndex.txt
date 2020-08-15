@@ -1,0 +1,40 @@
+PUT books-dev
+{
+  "mappings": {
+    "properties": {
+      "book_id": {
+        "type": "keyword"
+      },
+	  "book_name": {
+        "type": "text"
+      },
+      "cover": {
+        "type": "text"
+      },
+      "author_name": {
+        "type": "text"
+      },
+      "code": {
+        "type": "keyword"
+      },
+      "type": {
+        "type": "keyword"
+      },
+	  "publish_time": {
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+      "ctime": {
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+	  "mtime": {
+        "type": "date",
+        "format": "yyyy-MM-dd HH:mm:ss"
+      },
+       "is_deleted": {
+         "type": "keyword"
+      }
+    }
+  }
+}
