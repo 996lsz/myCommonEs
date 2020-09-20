@@ -3,9 +3,9 @@ package com.core.entity.common;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.core.constant.EsBaseAnnotationConstant;
+import org.apache.commons.lang3.time.DateFormatUtils;
 
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 /**
  * description
@@ -25,6 +25,45 @@ public class EsQuery {
 		String must = bool.getType();
 		JSONObject object = JSONObject.parseObject(String.format("{\"term\":{\"%s\":\"%s\"}}", fieldName, value));
 		this.jsonObject.getJSONObject("query").getJSONObject("bool").getJSONArray(must).add(object);
+		return this;
+	}
+
+	public EsQuery terms(String fieldName, Object value) {
+		return terms(fieldName, value, EsBaseAnnotationConstant.BoolTypeEnum.MUST);
+	}
+
+	public EsQuery terms(String fieldName, Object value, EsBaseAnnotationConstant.BoolTypeEnum boolTypeEnum) {
+		if (value instanceof Object[]) {
+			value = Arrays.asList(value);
+		}
+		if(value instanceof Collection){
+			List list = (List) value;
+			if(list.size() > 0 && list.get(0) instanceof Date){
+				List<String> replace = new ArrayList<>();
+				for (Object temp : list) {
+					replace.add(DateFormatUtils.format((Date) temp, "yyyy-MM-dd HH:mm:ss"));
+				}
+				value = replace;
+			}
+		}
+		JSONObject termObject = new JSONObject();
+		JSONObject fieldObject = new JSONObject();
+		fieldObject.put(fieldName, value);
+		termObject.put("terms", fieldObject);
+		this.jsonObject.getJSONObject("query").getJSONObject("bool").getJSONArray(boolTypeEnum.getType()).add(termObject);
+		return this;
+	}
+
+	public EsQuery range(String fieldName, Object value, EsBaseAnnotationConstant.Range range){
+		return range(fieldName, value, range, EsBaseAnnotationConstant.BoolTypeEnum.MUST);
+	}
+	public EsQuery range(String fieldName, Object value, EsBaseAnnotationConstant.Range range, EsBaseAnnotationConstant.BoolTypeEnum boolTypeEnum) {
+		JSONObject rangeQueryObject = JSONObject.parseObject(String.format("{\"range\":{\"%s\":{}}}", fieldName));
+		if (value instanceof Date) {
+			value = DateFormatUtils.format((Date) value, "yyyy-MM-dd HH:mm:ss");
+		}
+		rangeQueryObject.getJSONObject("range").getJSONObject(fieldName).put(range.getType(), value);
+		this.jsonObject.getJSONObject("query").getJSONObject("bool").getJSONArray(boolTypeEnum.getType()).add(rangeQueryObject);
 		return this;
 	}
 

@@ -215,7 +215,7 @@ public abstract class EsService<T> {
 	 * @param colunm 字段
 	 * @return
 	 */
-	public Object max(Object o, String colunm) throws IOException {
+	public Object max(Object o, String colunm) {
 		return aggs(o, EsBaseAnnotationConstant.EsAggsTypeEnum.MAX, colunm);
 	}
 
@@ -224,7 +224,7 @@ public abstract class EsService<T> {
 	 * @param colunm 字段
 	 * @return
 	 */
-	public Object min(Object o, String colunm) throws IOException {
+	public Object min(Object o, String colunm) {
 		return aggs(o, EsBaseAnnotationConstant.EsAggsTypeEnum.MIN, colunm);
 	}
 
@@ -233,7 +233,7 @@ public abstract class EsService<T> {
 	 * @param colunm 字段
 	 * @return
 	 */
-	public Object sum(Object o, String colunm) throws IOException {
+	public Object sum(Object o, String colunm) {
 		return aggs(o, EsBaseAnnotationConstant.EsAggsTypeEnum.SUM, colunm);
 	}
 
@@ -242,7 +242,7 @@ public abstract class EsService<T> {
 	 * @param colunm 字段
 	 * @return
 	 */
-	public Object avg(Object o, String colunm) throws IOException {
+	public Object avg(Object o, String colunm) {
 		return aggs(o, EsBaseAnnotationConstant.EsAggsTypeEnum.AVG, colunm);
 	}
 
@@ -252,41 +252,46 @@ public abstract class EsService<T> {
 	 * @param colunms 需要统计的字段
 	 * @return
 	 */
-	public Object[] multiAggs(Object o, EsBaseAnnotationConstant.EsAggsTypeEnum[] types, String[] colunms) throws IOException {
+	public Object[] multiAggs(Object o, EsBaseAnnotationConstant.EsAggsTypeEnum[] types, String[] colunms) {
 		return aggs(o, types, colunms);
 	}
 
-	private Object aggs(Object o, EsBaseAnnotationConstant.EsAggsTypeEnum type, String colunm) throws IOException {
+	private Object aggs(Object o, EsBaseAnnotationConstant.EsAggsTypeEnum type, String colunm) {
 		EsBaseAnnotationConstant.EsAggsTypeEnum[] types = {type};
 		String[] colunms = {colunm};
 		return aggs(o, types, colunms)[0];
 	}
 
-	private Object[] aggs(Object o, EsBaseAnnotationConstant.EsAggsTypeEnum[] types, String[] colunms) throws IOException {
-		if(ArrayUtils.isEmpty(types) || ArrayUtils.isEmpty(colunms) || types.length != colunms.length){
-			throw new RuntimeException("types length no equal colunms length");
+	private Object[] aggs(Object o, EsBaseAnnotationConstant.EsAggsTypeEnum[] types, String[] colunms) {
+		try {
+			if (ArrayUtils.isEmpty(types) || ArrayUtils.isEmpty(colunms) || types.length != colunms.length) {
+				throw new RuntimeException("types length no equal colunms length");
+			}
+			String indexName = EsConfigHelper.getIndexName(o.getClass());
+			Object[] result = new Object[types.length];
+			//拼接aggs查询语句
+			JSONObject query = prepareSearch(o);
+			;
+			query.put("size", 0);
+			JSONObject aggs = new JSONObject();
+			for (int i = 0; i < colunms.length; i++) {
+				String aggStr = String.format("{\"%s\":{\"field\": \"%s\"}}", types[i].getType(), colunms[i]);
+				aggs.put("aggs" + i, JSONObject.parseObject(aggStr));
+			}
+			query.put("aggs", aggs);
+			HttpEntity entity = new NStringEntity(query.toJSONString(), ContentType.APPLICATION_JSON);
+			Request request = new Request("GET", indexName + "/_search");
+			request.setEntity(entity);
+			Response response = restClient.performRequest(request);
+			JSONObject responseObject = JSONObject.parseObject(EntityUtils.toString(response.getEntity()));
+			responseObject = responseObject.getJSONObject("aggregations");
+			for (int i = 0; i < colunms.length; i++) {
+				result[i] = responseObject.getJSONObject("aggs" + i).get("value");
+			}
+			return result;
+		}catch (Exception e){
+			throw new RuntimeException(e);
 		}
-		String indexName = EsConfigHelper.getIndexName(o.getClass());
-		Object[] result = new Object[types.length];
-		//拼接aggs查询语句
-		JSONObject query = prepareSearch(o);;
-		query.put("size", 0);
-		JSONObject aggs = new JSONObject();
-		for(int i = 0; i < colunms.length; i++){
-			String aggStr = String.format("{\"%s\":{\"field\": \"%s\"}}", types[i].getType(), colunms[i]);
-			aggs.put("aggs" + i, JSONObject.parseObject(aggStr));
-		}
-		query.put("aggs", aggs);
-		HttpEntity entity = new NStringEntity(query.toJSONString(), ContentType.APPLICATION_JSON);
-		Request request = new Request("GET", indexName + "/_search");
-		request.setEntity(entity);
-		Response response = restClient.performRequest(request);
-		JSONObject responseObject = JSONObject.parseObject(EntityUtils.toString(response.getEntity()));
-		responseObject = responseObject.getJSONObject("aggregations");
-		for(int i = 0; i < colunms.length; i++){
-			result[i] = responseObject.getJSONObject("aggs" + i).get("value");
-		}
-		return result;
 	}
 
 
