@@ -1,5 +1,6 @@
 package com.test.service;
 
+import com.core.annotation.DS;
 import com.core.service.EsService;
 import com.test.entity.po.BooksPO;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Service;
  * @contact 648748030@qq.com
  */
 @Service
+@DS("master")
 public class BookService extends EsService<BooksPO> {
     
 }

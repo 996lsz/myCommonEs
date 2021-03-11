@@ -6,9 +6,14 @@ import com.alibaba.fastjson.util.ParameterizedTypeImpl;
 import com.core.annotation.Id;
 import com.core.constant.EsBaseAnnotationConstant;
 import com.core.entity.common.*;
+import com.core.exception.DocumentMissingException;
+import com.core.exception.EsRuntimeException;
+import com.core.exception.TooManyRequestsException;
+import com.core.exception.VersionConflictException;
 import com.core.filter.QueryFilter;
 import com.core.utils.EsConfigHelper;
 import com.core.utils.EsPageHelper;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.entity.ContentType;
@@ -16,12 +21,14 @@ import org.apache.http.nio.entity.NStringEntity;
 import org.apache.http.util.EntityUtils;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.Response;
+import org.elasticsearch.client.ResponseException;
 import org.elasticsearch.client.RestClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.Resource;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.*;
@@ -39,8 +46,12 @@ public abstract class EsService<T> {
 
 	protected final Logger LOGGER = LoggerFactory.getLogger(this.getClass());
 
-	@Autowired
-	private RestClient restClient;
+/*	@Resource(name = "esBaseRestClient")
+	private RestClient restClient;*/
+
+	@Resource(name = "dynamicDataSourceMap")
+	private Map<String, RestClient> dynamicDataSourceMap;
+
 
 	/**
 	 * 根据条件查询
@@ -73,11 +84,19 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity(query.toJSONString(), ContentType.APPLICATION_JSON);
 			Request request = new Request("GET", EsConfigHelper.getServiceClassIndexName(this.getClass()) + "/_search");
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), new TypeReference<SearchResult<T>>(EsConfigHelper.getserviceGenericityClass(this.getClass())){});
 
-		}catch (Exception e){
-			throw new RuntimeException(e);
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		}catch (Exception e) {
+			throw new EsRuntimeException(e);
 		}finally {
 			EsPageHelper.remove();
 		}
@@ -137,6 +156,7 @@ public abstract class EsService<T> {
 		}
 		try {
 			Request request = new Request("GET", indexName + "/_doc/" + id);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), new TypeReference<InnerHits<T>>(EsConfigHelper.getserviceGenericityClass(this.getClass())){});
 		} catch (IOException e) {
@@ -201,6 +221,7 @@ public abstract class EsService<T> {
 	public Long count(Object o){
 		try {
 			Request request = new Request("GET", EsConfigHelper.getIndexName(o.getClass()) + "/_count");
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			JSONObject responseResult = JSONObject.parseObject(EntityUtils.toString(response.getEntity()));
 			return responseResult.getLong("count");
@@ -282,6 +303,7 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity(query.toJSONString(), ContentType.APPLICATION_JSON);
 			Request request = new Request("GET", indexName + "/_search");
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			JSONObject responseObject = JSONObject.parseObject(EntityUtils.toString(response.getEntity()));
 			responseObject = responseObject.getJSONObject("aggregations");
@@ -304,6 +326,7 @@ public abstract class EsService<T> {
 	 * @time: 2020/5/28 18:00
 	 */
 	public void searchScroll(Object o, int pageSize, int timeOut, Consumer<SearchResult<T>> processFunction) {
+		String scrollId = null;
 		try {
 			SearchResult[] result = new SearchResult[2];
 			String indexName = EsConfigHelper.getIndexName(o.getClass());
@@ -315,10 +338,11 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity(JSONObject.toJSONString(query), ContentType.APPLICATION_JSON);
 			Request request = new Request("GET", url);
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			SearchResult<T> firstResult = JSONObject.parseObject(EntityUtils.toString(response.getEntity()), new TypeReference<SearchResult<T>>(EsConfigHelper.getserviceGenericityClass(this.getClass())){});
 			result[0] = firstResult;
-			String scrollId = firstResult.getScrollId();
+			scrollId = firstResult.getScrollId();
 			System.out.println("首查询");
 			int i = 0;
 			while (true) {
@@ -327,13 +351,24 @@ public abstract class EsService<T> {
 				if (consumeData.getHits().getHits().size() == 0) {
 					break;
 				}
-				CompletableFuture<SearchResult> nextResult = CompletableFuture.supplyAsync(() -> searchScroll(timeOut, scrollId));
+				String finalScrollId = scrollId;
+				CompletableFuture<SearchResult> nextResult = CompletableFuture.supplyAsync(() -> searchScroll(timeOut, finalScrollId));
 				processFunction.accept(consumeData);
 				result[i % 2] = nextResult.get();
 			}
 			deleteScrollId(scrollId);
-		}catch (Exception e){
-			throw new RuntimeException(e);
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
+		}finally {
+			EsPageHelper.remove();
+			deleteScrollId(scrollId);
 		}
 	}
 
@@ -353,6 +388,7 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity(qsl, ContentType.APPLICATION_JSON);
 			Request request = new Request("GET", url);
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), new TypeReference<SearchResult<T>>(EsConfigHelper.getserviceGenericityClass(this.getClass())) {
 			});
@@ -372,6 +408,7 @@ public abstract class EsService<T> {
 		try {
 			Request request = new Request("DELETE", url);
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 		} catch (IOException e) {
 			LOGGER.info("delete scroll id fail",e);
@@ -389,11 +426,21 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity(JSONObject.toJSONString(t), ContentType.APPLICATION_JSON);
 			Request request = new Request("PUT", indexName + "/_create/" + id);
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), CUDResult.class);
 
-		}catch (Exception e){
-			throw new RuntimeException(e);
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if (409 == statusCode) {
+				throw new VersionConflictException(re);
+			}else if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
 		}
 	}
 
@@ -408,11 +455,23 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity(JSONObject.toJSONString(t), ContentType.APPLICATION_JSON);
 			Request request = new Request("PUT", indexName + "/_doc/" + id);
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), CUDResult.class);
 
-		}catch (Exception e){
-			throw new RuntimeException(e);
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if (409 == statusCode) {
+				throw new VersionConflictException(re);
+			}else if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else if(404 == statusCode){
+				throw new DocumentMissingException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
 		}
 	}
 
@@ -429,11 +488,23 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity(jsonObject.toJSONString(), ContentType.APPLICATION_JSON);
 			Request request = new Request("POST", indexName + "/_update/" + id);
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), CUDResult.class);
 
-		}catch (Exception e){
-			throw new RuntimeException(e);
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if (409 == statusCode) {
+				throw new VersionConflictException(re);
+			}else if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else if(404 == statusCode){
+				throw new DocumentMissingException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
 		}
 	}
 
@@ -477,11 +548,23 @@ public abstract class EsService<T> {
 			HttpEntity entity = new NStringEntity("{\"doc\":{\"is_deleted\":\"1\"}}", ContentType.APPLICATION_JSON);
 			Request request = new Request("POST", indexName + "/_update/" + id);
 			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), CUDResult.class);
 
-		}catch (Exception e){
-			throw new RuntimeException(e);
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if (409 == statusCode) {
+				throw new VersionConflictException(re);
+			}else if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else if(404 == statusCode){
+				throw new DocumentMissingException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
 		}
 
 	}
@@ -514,13 +597,140 @@ public abstract class EsService<T> {
 				throw new RuntimeException("deleteById cannot found index name");
 			}
 			Request request = new Request("DELETE", indexName + "/_doc/" + id);
+			RestClient restClient = getCurrentDataSource();
 			Response response = restClient.performRequest(request);
 			return JSONObject.parseObject(EntityUtils.toString(response.getEntity()), CUDResult.class);
 
-		}catch (Exception e){
-			throw new RuntimeException(e);
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if (409 == statusCode) {
+				throw new VersionConflictException(re);
+			}else if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
 		}
 
+	}
+
+	/**
+	 * 批量操作
+	 * @param hits
+	 * @param bulkType
+	 */
+	public BulkResult bulk(List<InnerHits<T>> hits, EsBaseAnnotationConstant.EsBulkTypeEnum bulkType) {
+		return bulk(hits, bulkType, null);
+	}
+
+	public BulkResult bulk(List<InnerHits<T>> hits, EsBaseAnnotationConstant.EsBulkTypeEnum bulkType, Integer retryOnConflict) {
+		try {
+			if(CollectionUtils.isEmpty(hits)) {
+				return null;
+			}
+			String retryOnConflictStr = "";
+			if(bulkType.equals(EsBaseAnnotationConstant.EsBulkTypeEnum.UPDATE) && retryOnConflict != null){
+				retryOnConflictStr = ",\"retry_on_conflict\":" + retryOnConflict;
+			}
+			StringBuilder stringBuilder = new StringBuilder();
+			for (InnerHits hit : hits) {
+				Class souceClass = hit.getSource().getClass();
+				String index = hit.getIndex() != null ? hit.getIndex() : EsConfigHelper.getIndexName(souceClass);
+				String id = hit.getId() != null ? hit.getId() : EsConfigHelper.getIndexProperty(souceClass, Id.class).get(0).getGetMethod().invoke(hit.getSource()).toString();
+				if(id == null || index == null){
+					throw new NullPointerException("bulk param: index, id cannot be null");
+				}
+				stringBuilder.append(String.format("{\"%s\":{\"_index\":\"%s\",\"_id\":\"%s\"%s}}\n", bulkType.getType(), index, id, retryOnConflictStr));
+				switch (bulkType) {
+					case UPDATE:{
+						stringBuilder.append("{\"doc\":").append(JSONObject.toJSONString(hit.getSource())).append("}\n");
+						break;
+					}
+					default:{
+						stringBuilder.append(JSONObject.toJSONString(hit.getSource())).append("\n");
+					}
+				}
+			}
+			HttpEntity entity = new NStringEntity(stringBuilder.toString(), ContentType.APPLICATION_JSON);
+			Request request = new Request("POST", "/_bulk");
+			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
+			Response response = restClient.performRequest(request);
+			BulkResult bulkResult = JSONObject.parseObject(EntityUtils.toString(response.getEntity()), BulkResult.class);
+			return bulkResult;
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if (409 == statusCode) {
+				throw new VersionConflictException(re);
+			}else if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
+		}
+	}
+
+	public BulkResult bulk(Collection<T> hits, EsBaseAnnotationConstant.EsBulkTypeEnum bulkType){
+		return bulk(hits, bulkType, null);
+	}
+
+	/**
+	 *
+	 * @param hits
+	 * @param bulkType
+	 * @param retryOnConflict 重试次数(只在UPDATE类型生效)
+	 */
+	public BulkResult bulk(Collection<T> hits, EsBaseAnnotationConstant.EsBulkTypeEnum bulkType, Integer retryOnConflict) {
+		try {
+			if(CollectionUtils.isEmpty(hits)) {
+				return null;
+			}
+			String retryOnConflictStr = "";
+			if(bulkType.equals(EsBaseAnnotationConstant.EsBulkTypeEnum.UPDATE) && retryOnConflict != null){
+				retryOnConflictStr = ",\"retry_on_conflict\":" + retryOnConflict;
+			}
+			StringBuilder stringBuilder = new StringBuilder();
+			for (T t : hits) {
+				String index = EsConfigHelper.getIndexName(t.getClass());
+				String id = EsConfigHelper.getIndexProperty(t.getClass(), Id.class).get(0).getGetMethod().invoke(t).toString();
+				if (id == null || index == null) {
+					throw new NullPointerException("bulk param: index, id cannot be null");
+				}
+				stringBuilder.append(String.format("{\"%s\":{\"_index\":\"%s\",\"_id\":\"%s\"%s}}\n", bulkType.getType(), index, id, retryOnConflictStr));
+				switch (bulkType) {
+					case UPDATE: {
+						stringBuilder.append("{\"doc\":").append(JSONObject.toJSONString(t)).append("}\n");
+						break;
+					}
+					default: {
+						stringBuilder.append(JSONObject.toJSONString(t)).append("\n");
+					}
+				}
+
+			}
+			HttpEntity entity = new NStringEntity(stringBuilder.toString(), ContentType.APPLICATION_JSON);
+			Request request = new Request("POST", "/_bulk");
+			request.setEntity(entity);
+			RestClient restClient = getCurrentDataSource();
+			Response response = restClient.performRequest(request);
+			BulkResult bulkResult = JSONObject.parseObject(EntityUtils.toString(response.getEntity()), BulkResult.class);
+			return bulkResult;
+		} catch (ResponseException re){
+			int statusCode = re.getResponse().getStatusLine().getStatusCode();
+			if (409 == statusCode) {
+				throw new VersionConflictException(re);
+			}else if(429 == statusCode){
+				throw new TooManyRequestsException(re);
+			}else {
+				throw new EsRuntimeException(re);
+			}
+		} catch (Exception e) {
+			throw new EsRuntimeException(e);
+		}
 	}
 
 	/**
@@ -563,5 +773,14 @@ public abstract class EsService<T> {
 
 		}
 		return result;
+	}
+
+	/**
+	 * 获取当前多数据源实例RestClient
+	 * @return
+	 */
+	private RestClient getCurrentDataSource(){
+		RestClient restClient = dynamicDataSourceMap.get(DynamicDataSourceContextHolder.getDataSourceLookupKey());
+		return restClient;
 	}
 }

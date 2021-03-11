@@ -1,0 +1,31 @@
+{
+  "groups": [
+    {
+      "name": "elasticsearch.datasource.dynamic",
+      "type": "com.core.entity.config.DynamicDataSourceProperties",
+      "sourceType": "com.core.entity.config.DynamicDataSourceProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "elasticsearch.datasource.dynamic.datasource",
+      "type": "java.util.Map<java.lang.String,com.core.entity.config.DataSourceProperty>",
+      "description": "每一个数据源",
+      "sourceType": "com.core.entity.config.DynamicDataSourceProperties"
+    },
+    {
+      "name": "elasticsearch.datasource.dynamic.order",
+      "type": "java.lang.Integer",
+      "description": "aop切面顺序，默认优先级最高",
+      "sourceType": "com.core.entity.config.DynamicDataSourceProperties"
+    },
+    {
+      "name": "elasticsearch.datasource.dynamic.primary",
+      "type": "java.lang.String",
+      "description": "必须设置默认的库,默认master",
+      "sourceType": "com.core.entity.config.DynamicDataSourceProperties",
+      "defaultValue": "master"
+    }
+  ],
+  "hints": []
+}

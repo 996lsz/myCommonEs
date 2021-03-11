@@ -4,7 +4,6 @@ import com.alibaba.fastjson.PropertyNamingStrategy;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.fastjson.annotation.JSONType;
 import com.core.annotation.Range;
-import com.core.annotation.Source;
 import com.core.annotation.Term;
 import com.core.constant.EsBaseAnnotationConstant;
 import com.test.entity.DateValueDeserializer;
@@ -41,9 +40,6 @@ public class BaseQTO {
 	@Range(fieldName = "mtime", range = EsBaseAnnotationConstant.Range.LTE)
 	@JSONField(format="yyyy-MM-dd HH:mm:ss", deserializeUsing = DateValueDeserializer.class)
 	protected Date mtimeLte;
-
-	@Source
-	protected List<String> source;
 
 	public BaseQTO(){
 		this.isDeleted = 1;

@@ -2,7 +2,10 @@ package com.core.utils;
 
 import com.core.config.EsBaseConfig;
 import com.core.entity.common.IndexProperty;
+import com.core.entity.config.DataSourceProperty;
 import com.core.filter.QueryFilter;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
@@ -14,6 +17,20 @@ import java.util.List;
  * @contact 648748030@qq.com
  */
 public class EsConfigHelper {
+
+	/**
+	 * es相关配置
+	 */
+	@Getter
+	@Setter
+	private static DataSourceProperty commonEsConfig;
+
+	/**
+	 * PO类扫描路径
+	 */
+	@Getter
+	@Setter
+	private static String[] scanPackage;
 
 	public static List<IndexProperty.Property> getIndexProperty(Class indexClazz, Class annotationClazz){
 		IndexProperty IndexProperty = EsBaseConfig.getIndexMap().get(indexClazz);

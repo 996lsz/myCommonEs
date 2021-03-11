@@ -3,6 +3,7 @@ package com.core.filter;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.core.utils.EsPageHelper;
+import org.apache.commons.lang3.ArrayUtils;
 
 /**
  * pageHelper查询过滤器,添加分页，排序字段
@@ -20,6 +21,7 @@ public class PageHelperFilter implements QueryFilter {
 			Integer from = pageInfo.getFrom();
 			JSONArray sort = pageInfo.getSort();
 			Boolean trackTotalHits = pageInfo.getTrackTotalHits();
+			String[] source = pageInfo.getSource();
 			if(size != null){
 				query.put("size", size);
 			}
@@ -33,6 +35,9 @@ public class PageHelperFilter implements QueryFilter {
 				query.put("track_total_hits", trackTotalHits);
 			}
 
+			if(ArrayUtils.isNotEmpty(source)){
+				query.put("_source", source);
+			}
 		}
 
 	}

@@ -1,8 +1,6 @@
+import com.alibaba.fastjson.JSONObject;
 import com.core.constant.EsBaseAnnotationConstant;
-import com.core.entity.common.Bucket;
-import com.core.entity.common.EsQuery;
-import com.core.entity.common.InnerHits;
-import com.core.entity.common.SearchResult;
+import com.core.entity.common.*;
 import com.Application;
 import com.core.utils.EsPageHelper;
 import com.test.entity.po.BooksPO;
@@ -48,8 +46,9 @@ public class EsTest {
 		booksPO.setCtime(new Date());
 		booksPO.setMtime(new Date());
 		try {
-			bookService.create(booksPO);
-		}catch (Exception e){}
+			CUDResult cudResult = bookService.create(booksPO);
+		}catch (Exception e){
+		}
 		//查 - 根据ID
 		InnerHits<BooksPO> searchById1 = bookService.searchById("10001");
 		System.out.println("searchById1:" + searchById1.getSource().getBookName());
@@ -57,14 +56,16 @@ public class EsTest {
 		System.out.println("searchById2:" + searchById2.getSource().getBookName());
 		//查 - 根据条件
 		BooksQTO qto = new BooksQTO();
+		//EsPageHelper工具类可以完成分页，排序，查询指定字段
+		EsPageHelper.setSource("book_name","code");
 		qto.setAuthorName("污妖王");
-		qto.setPublishTimeGte(DateUtils.parseDate("2020-06-25 11:11:11", "yyyy-MM-dd HH:mm:ss"));
-		qto.setPublishTimeLte(DateUtils.parseDate("2020-08-26 11:11:11", "yyyy-MM-dd HH:mm:ss"));
+		qto.setPublishTimeGte(DateUtils.parseDate("2021-01-01 11:11:11", "yyyy-MM-dd HH:mm:ss"));
+		qto.setPublishTimeLte(DateUtils.parseDate("2021-02-26 11:11:11", "yyyy-MM-dd HH:mm:ss"));
 		SearchResult<BooksPO> search = bookService.search(qto);
 		System.out.println("search sql:" + bookService.prepareSearch(qto));
 		System.out.println("search result:" + search.getHits().getHits());
 		//改
-		BooksPO update= new BooksPO();
+		/*BooksPO update= new BooksPO();
 		update.setBookId("10001");
 		update.setCover("辣妹儿.jpg");
 		//选择更新
@@ -74,7 +75,7 @@ public class EsTest {
 		//删
 		bookService.deleteByIdSoft(update);
 		System.out.println(bookService.deleteByIdSoft("10001"));
-		bookService.deleteById(update);
+		bookService.deleteById(update);*/
 		//bookService.deleteById("10001");
 
 	}
@@ -93,7 +94,6 @@ public class EsTest {
 		//qto.setTypeMustNot("VAN");
 		esQuery.term("type", "VAN", EsBaseAnnotationConstant.BoolTypeEnum.MUST_NOT);
 
-		qto.setSource(Arrays.asList("book_id","book_name"));
 		EsPageHelper.startPage(1,100);
 		EsPageHelper.orderBy("publish_time", EsBaseAnnotationConstant.Sort.DESC);
 		System.out.println(bookService.prepareSearch(qto));

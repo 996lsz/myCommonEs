@@ -2,8 +2,21 @@ server:
   port: 8080
 
 elasticsearch:
-  env: -dev
-  hostname: localhost
-  port: 9200
-  username:
-  password:
+  datasource:
+    dynamic:
+      datasource:
+        master:
+          env: -dev
+          hostname: localhost
+          port: 9200
+          username:
+          password:
+        node:
+          env: -dev
+          hostname: 192.168.31.169
+          port: 9200
+          username:
+          password:
+logging:
+  level:
+    com: debug

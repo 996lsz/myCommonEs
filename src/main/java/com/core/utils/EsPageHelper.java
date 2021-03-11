@@ -5,6 +5,8 @@ import com.alibaba.fastjson.JSONObject;
 import com.core.constant.EsBaseAnnotationConstant;
 import lombok.Data;
 
+import java.util.List;
+
 /**
  * description
  * 
@@ -69,6 +71,13 @@ public class EsPageHelper {
 		threadLocal.set(esPage);
 	}
 
+	public static void setSource(String... source){
+		EsPageInfo esPage = threadLocal.get();
+		esPage = esPage == null ? new EsPageInfo() : esPage;
+		esPage.setSource(source);
+		threadLocal.set(esPage);
+	}
+
 	@Data
 	public static class EsPageInfo{
 
@@ -79,6 +88,8 @@ public class EsPageHelper {
 		private JSONArray sort;
 
 		private Boolean trackTotalHits;
+
+		private String[] source;
 	}
 
 }

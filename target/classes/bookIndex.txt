@@ -8,7 +8,7 @@ PUT books-dev
 	  "book_name": {
         "type": "text"
       },
-      "avatar": {
+      "cover": {
         "type": "text"
       },
       "author_name": {

@@ -19,11 +19,6 @@ public class DateValueDeserializer implements ObjectDeserializer {
 
 	@Override
 	public <T> T deserialze(DefaultJSONParser parser, Type type, Object fieldName) {
-		//解析方法比较拙略，暂时还没找到比较好的取值方法
-/*		String value = parser.getLexer().numberString();
-		if(! StringUtils.isNumeric(value)){
-			value = parser.getLexer().stringVal();
-		}*/
 		String value = parser.parse(fieldName).toString();
 		if(StringUtils.isNumeric(value)){
 			if(13 == value.length()){
