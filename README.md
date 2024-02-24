@@ -5,7 +5,7 @@
 
 使用demo
 
-
+```java  
 public void curd() throws ParseException {
 	//增
 	BooksPO booksPO = new BooksPO();
@@ -52,3 +52,4 @@ public void curd() throws ParseException {
 	//bookService.deleteById("10001");
 
 }
+```
